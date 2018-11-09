@@ -39,6 +39,7 @@
         uniform vec3 uPointLightingColor;
 
         uniform bool uUseLighting;
+        uniform float uShininess;
         
         varying vec2 vTextureCoord;
         varying vec3 vLightWeighting;
@@ -56,7 +57,7 @@
                 vec3 lightDirection = normalize(uPointLightingLocation - mvPosition.xyz);
 
                 vec3 transformedNormal = uNMatrix * aVertexNormals;
-                float directionalLightWeighting = max(dot(transformedNormal, lightDirection), 0.0);
+                float directionalLightWeighting = max(pow(dot(transformedNormal, lightDirection), uShininess), 0.0);
                 vLightWeighting = uAmbientColor + uPointLightingColor * directionalLightWeighting;
             }
         }
@@ -70,7 +71,7 @@
         let GLONE = new WebGL();
 
         let boxCrate = new BoxGeometry(24, 24, 24, 2);
-        boxCrate.rotation.y = 90;
+        boxCrate.rotation.y = 135;
         boxCrate.rotation.x = 90;
         boxCrate.addTexture('Crate.jpg');
         boxCrate.action = () => {
@@ -80,6 +81,7 @@
         GLONE.add(boxCrate);
 
         let r = new RGeometry();
+        r.rotation.y = 135;
         r.action = () => {
             r.rotation.x = 1;
         };
@@ -89,13 +91,15 @@
         let ambientLight = new AmbientLight(new Color("0xFFFFFF"));
         GLONE.add(ambientLight);
 
-        let pointLight = new PointLight(new Color("0x156289"), {x:0, y:0, z:-30});
+        let pointLight = new PointLight(new Color("0xFFFFFF"), {x:0, y:5, z:-35});
         GLONE.add(pointLight);
 
         const tick = () => {
             requestAnimationFrame(tick);
             GLONE.render();
         }
+
+        //0x156289
 
         tick();
 

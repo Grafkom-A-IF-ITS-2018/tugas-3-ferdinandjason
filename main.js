@@ -99,6 +99,7 @@ function WebGL(id){
         this.shaderProgram.pointLightingLocationUniform = GL.getUniformLocation(this.shaderProgram, "uPointLightingLocation");
         this.shaderProgram.pointLightingColorUniform = GL.getUniformLocation(this.shaderProgram, "uPointLightingColor");
         this.shaderProgram.alphaUniform = GL.getUniformLocation(this.shaderProgram, "uAlpha");
+        this.shaderProgram.shiniUniform = GL.getUniformLocation(this.shaderProgram, "uShininess");
     }
     initShaders = initShaders.bind(this);
     initShaders();
@@ -197,6 +198,7 @@ WebGL.prototype.add = function(object3d) {
         this.object3dBuffer.push(buffer);
     } else {
         GL.uniform1i(this.shaderProgram.useLightingUniform, 1);
+        GL.uniform1f(this.shaderProgram.shiniUniform, 5.0);
         buffer.obj3d = object3d;
 
         this.object3dBuffer.push(buffer);
@@ -345,21 +347,21 @@ function BoxGeometry(depth, width, height, step = 1){
                 x *= (i&1)? -1 : 1;
                 y *= (j&2)? 1 : -1;
                 z *= (j&1)? 1 : -1;
-                this.normals.push(1.0, 0, 0);
+                this.normals.push(-1.0, 0, 0);
             } else if ( i & 2) { // BOTTOM TOP
                 x *= (j&2)? 1 : -1;
                 y *= (i&1)? -1 : 1;
                 z *= (j&1)? 1 : -1;
-                this.normals.push(0, 1.0, 0);
+                this.normals.push(0, -1.0, 0);
             } else { // FRONT BACK
                 x *= (j&2)? 1 : -1;
                 y *= (j&1)? 1 : -1;
                 z *= (i&1)? -1 : 1;
-                this.normals.push(0, 0, 1.0);
+                this.normals.push(0, 0, -1.0);
             }
             this.vertices.push(x, y, z);
             this.position.push([x, y, z, 1.0]);
-            this.colors.push(0, 0, 0, 1);
+            this.colors.push(0.0, 0.0, 0.0, 1.0);
         }
         var p = counter * BOX_GEOMETRY_POINT;
         var q = counter * BOX_GEOMETRY_POINT + 1;
@@ -484,8 +486,13 @@ function RGeometry(depth, width, height, color = new Color("0x156289")) {
     this.normals = [];
     this.textureCoord = [];
     for(let i = 0; i < this.vertices.length / 3; i++){
-        this.normals.push(0.0, 0.0, 1.0);
         this.textureCoord.push(0.0, 0.0);
+    }
+    for(let i = 0; i < this.vertices.length / 6; i++){
+        this.normals.push(0.0, 0.0, 1.0);
+    }
+    for(let i = 0; i < this.vertices.length / 6; i++){
+        this.normals.push(0.0, 1.0, 0.0);
     }
     this.colors = []
     for(let i = 0; i < this.vertices.length / 3; i++){
@@ -512,7 +519,7 @@ function Color(hex){
     this.b = parseInt(values[4].toString() + values[5].toString(), 16);
 }
 
-function AmbientLight(color, intensity = 0.2) {
+function AmbientLight(color, intensity = 0.0) {
     this.type = 'ambient-light';
     this.color = {};
     console.log(color);
