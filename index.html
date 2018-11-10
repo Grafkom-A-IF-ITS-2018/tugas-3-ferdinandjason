@@ -57,7 +57,9 @@
                 vec3 lightDirection = normalize(uPointLightingLocation - mvPosition.xyz);
 
                 vec3 transformedNormal = uNMatrix * aVertexNormals;
-                float directionalLightWeighting = max(pow(dot(transformedNormal, lightDirection), uShininess), 0.0);
+                float res = dot(transformedNormal, lightDirection);
+                if (res < 0.0) res = -res;
+                float directionalLightWeighting = max(pow(res, uShininess), 0.0);
                 vLightWeighting = uAmbientColor + uPointLightingColor * directionalLightWeighting;
             }
         }
@@ -75,15 +77,18 @@
         boxCrate.rotation.x = 90;
         boxCrate.addTexture('Crate.jpg');
         boxCrate.action = () => {
-            //boxCrate.rotation.y = 1;
+            
         };
         boxCrate.render();
         GLONE.add(boxCrate);
 
         let r = new RGeometry();
-        r.rotation.y = 135;
+        r.rotation.y = 45;
         r.action = () => {
-            r.rotation.x = 1;
+            r.matrixWorld = Object.assign({},r.temporaryMatrixWorld);
+            r.move.vector([window.dir[0]*0.1, window.dir[1]*0.1, window.dir[2]*0.1]);
+            r.rotation.y += window.rotater*1;
+            r.translate.mat = [-1.5, -3.0, -0.5];
         };
         r.render();
         GLONE.add(r);
@@ -91,13 +96,26 @@
         let ambientLight = new AmbientLight(new Color("0xFFFFFF"));
         GLONE.add(ambientLight);
 
-        let pointLight = new PointLight(new Color("0xFFFFFF"), {x:0, y:5, z:-35});
+        let pointLight = new PointLight(new Color("0x156289"), {x:0, y:5, z:-35});
         GLONE.add(pointLight);
 
         const tick = () => {
             requestAnimationFrame(tick);
             GLONE.render();
         }
+
+        document.addEventListener('after-render', function(){
+            let collisionDetector = new CollisionDetector(boxCrate, r);
+            collisionDetector.buildCollider();
+            collisionDetector.detect();
+        });
+
+        document.addEventListener('light-follow', function(){
+            let center = r.findCenter();
+            pointLight.position.x = center[0];
+            pointLight.position.y = center[1];
+            pointLight.position.z = center[2];
+        })
 
         //0x156289
 

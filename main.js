@@ -205,6 +205,9 @@ WebGL.prototype.add = function(object3d) {
     }
 }
 
+var eventAfterRender = new CustomEvent('after-render');
+var eventLightFollow = new CustomEvent('light-follow');
+
 WebGL.prototype.render = function() {
     GL.viewport(0, 0, GL.VIEWPORT_WIDTH, GL.VIEWPORT_HEIGHT);
     GL.clear(GL.COLOR_BUFFER_BIT, GL.DEPTH_BUFFER_BIT);
@@ -248,11 +251,19 @@ WebGL.prototype.render = function() {
 
             GL.bindBuffer(GL.ELEMENT_ARRAY_BUFFER, o.indices);
 
+            let temp = [];
+            for(let i = 0; i < o.obj3d.vertices_.length; i++){
+                temp.push(multiply(this.mvMatrix, o.obj3d.vertices_[i]));
+            }
+            o.obj3d.position = JSON.parse(JSON.stringify(temp));
+
             this.setMatrixUniform();
+
             GL.drawElements(GL.TRIANGLES, o.indices.numItems, GL.UNSIGNED_SHORT, 0);
         } else if (o.obj3d.type === 'ambient-light') {
             GL.uniform3f(this.shaderProgram.ambientColorUniform, o.obj3d.color.r, o.obj3d.color.g, o.obj3d.color.b);
         } else if (o.obj3d.type === 'point-light') {
+            document.dispatchEvent(eventLightFollow);
             GL.uniform3f(this.shaderProgram.pointLightingLocationUniform, o.obj3d.position.x, o.obj3d.position.y, o.obj3d.position.z)
             GL.uniform3f(this.shaderProgram.pointLightingColorUniform, o.obj3d.color.r, o.obj3d.color.g, o.obj3d.color.b);
         }
@@ -260,11 +271,15 @@ WebGL.prototype.render = function() {
         this.mvPopMatrix();
 
     }
+
+    document.dispatchEvent(eventAfterRender);
 }
 
 function Geometry(){
     this.id = btoa(Math.random()).substring(0,12);
     this.matrixWorld = mat4.create();
+
+    this.temporaryMatrixWorld = undefined;
 
     this.rotation = {
         _x : 0,
@@ -306,6 +321,38 @@ function Geometry(){
             }
         },
     });
+
+    this.translate = {
+        to : [0, 0, 0],
+        updateMatrixWorld : function() {
+            mat4.translate(this.matrixWorld, this.matrixWorld, this.translate.to);
+        }.bind(this)
+    }
+    Object.defineProperties(this.translate,{
+        mat : {
+            get : function () {
+                return this.to;
+            },
+            set : function (value) {
+                this.to = value;
+                this.updateMatrixWorld();
+            },
+        },
+    });
+
+    this.move = {
+        direction : [0, 0, 0],
+        vector : function(value) {
+            this.direction[0] += value[0];
+            this.direction[1] += value[1];
+            this.direction[2] += value[2];
+            this.updateMatrixWorld();
+        },
+        updateMatrixWorld : function() {
+            mat4.translate(this.matrixWorld, this.matrixWorld, this.move.direction);
+        }.bind(this)
+    }
+
 }
 
 Geometry.prototype.constructor = Geometry;
@@ -327,6 +374,7 @@ function BoxGeometry(depth, width, height, step = 1){
     this.type = 'geometry';
     this.indices = [];
     this.vertices = [];
+    this.vertices_ = [];
     this.normals = [];
     this.colors = [];
     this.textureCoord = [];
@@ -347,20 +395,19 @@ function BoxGeometry(depth, width, height, step = 1){
                 x *= (i&1)? -1 : 1;
                 y *= (j&2)? 1 : -1;
                 z *= (j&1)? 1 : -1;
-                this.normals.push(-1.0, 0, 0);
+                this.normals.push(1.0, 0, 0);
             } else if ( i & 2) { // BOTTOM TOP
                 x *= (j&2)? 1 : -1;
                 y *= (i&1)? -1 : 1;
                 z *= (j&1)? 1 : -1;
-                this.normals.push(0, -1.0, 0);
+                this.normals.push(0, 1.0, 0);
             } else { // FRONT BACK
                 x *= (j&2)? 1 : -1;
                 y *= (j&1)? 1 : -1;
                 z *= (i&1)? -1 : 1;
-                this.normals.push(0, 0, -1.0);
+                this.normals.push(0, 0, 1.0);
             }
             this.vertices.push(x, y, z);
-            this.position.push([x, y, z, 1.0]);
             this.colors.push(0.0, 0.0, 0.0, 1.0);
         }
         var p = counter * BOX_GEOMETRY_POINT;
@@ -370,6 +417,24 @@ function BoxGeometry(depth, width, height, step = 1){
         this.indices.push(p, q, r);
         this.indices.push(q, r, s);
     }
+
+    for(let i = 0; i < BOX_GEOMETRY_FACE / 3; i++, counter++){
+        for(let j = 0; j < BOX_GEOMETRY_POINT; j++){
+            var x = d, y = w, z = h;
+            if ( i & 2) { // BOTTOM TOP
+                x *= (j&2)? 1 : -1;
+                y *= (i&1)? -1 : 1;
+                z *= (j&1)? 1 : -1;
+            } else { // FRONT BACK
+                x *= (j&2)? 1 : -1;
+                y *= (j&1)? 1 : -1;
+                z *= (i&1)? -1 : 1;
+            }
+            this.vertices_.push([x, y, z, 1.0]);
+            this.position.push([x, y, z, 1.0]);
+        }
+    }
+    console.log(this.vertices_);
 
     console.log(this.indices);
     console.log(this.normals);
@@ -386,6 +451,7 @@ BoxGeometry.prototype.addTexture = function(src) {
 }
 
 BoxGeometry.prototype.render = function() {
+    this.temporaryMatrixWorld = this.matrixWorld;
     document.addEventListener(this.id, this.action.bind(this));
 }
 
@@ -482,7 +548,45 @@ function RGeometry(depth, width, height, color = new Color("0x156289")) {
         7,25,4,  4,22,25,
         9,27,6,  6,24,27,
     ];
-
+    this.position = [
+        [0, h,       d, 1],
+        [w, h,       d, 1],
+        [0, h-(h/6), d, 1],
+        [w, h-(h/6), d, 1],
+        [w-(w/3.0),h-(h/6)  , d, 1],
+        [w        ,h-(2*h/6), d, 1],
+        [w-(w/3.0),h-(2*h/6), d, 1],
+        [w-(2*w/3.0),h-(h/6)  , d, 1],
+        [0          ,h-(2*h/6), d, 1],
+        [w-(2*w/3.0),h-(2*h/6), d, 1],
+        [0, h-(3*h/6), d, 1],
+        [w, h-(3*h/6), d, 1],
+        [w-(2*w/3.0),h-(3*h/6), d, 1],
+        [0          ,0        , d, 1],
+        [w-(2*w/3.0),0        , d, 1],
+        [w-(w/3.0),0        , d, 1],
+        [w        ,0        , d, 1],
+        [w-(w/3.0),h-(3*h/6), d, 1],
+        [0 ,h      , 0, 1],
+        [w ,h      , 0, 1], 
+        [0 ,h-(h/6), 0, 1], 
+        [w ,h-(h/6), 0, 1], 
+        [w-(w/3.0),h-(h/6)  , 0, 1], 
+        [w        ,h-(2*h/6), 0, 1], 
+        [w-(w/3.0),h-(2*h/6), 0, 1], 
+        [w-(2*w/3.0), h-(h/6)  , 0, 1], 
+        [0          , h-(2*h/6), 0, 1], 
+        [w-(2*w/3.0), h-(2*h/6), 0, 1], 
+        [0, h-(3*h/6), 0, 1], 
+        [w, h-(3*h/6), 0, 1], 
+        [w-(2*w/3.0),h-(3*h/6), 0, 1], 
+        [0          ,0        , 0, 1], 
+        [w-(2*w/3.0),0        , 0, 1], 
+        [w-(w/3.0),0        , 0, 1], 
+        [w        ,0        , 0, 1], 
+        [w-(w/3.0),h-(3*h/6), 0, 1],
+    ]
+    this.vertices_ = Object.assign([], this.position);
     this.normals = [];
     this.textureCoord = [];
     for(let i = 0; i < this.vertices.length / 3; i++){
@@ -506,7 +610,21 @@ function RGeometry(depth, width, height, color = new Color("0x156289")) {
 RGeometry.prototype.constructor = RGeometry;
 
 RGeometry.prototype.render = function() {
+    this.temporaryMatrixWorld = Object.assign({}, this.matrixWorld);
     document.addEventListener(this.id, this.action.bind(this));
+}
+
+RGeometry.prototype.findCenter = function() {
+    let center = [0, 0, 0];
+    for(let i = 0; i < this.position.length; i++){
+        center[0] += this.position[i][0];
+        center[1] += this.position[i][1];
+        center[2] += this.position[i][2];
+    }
+    center[0] /= this.position.length;
+    center[1] /= this.position.length;
+    center[2] /= this.position.length;
+    return center;
 }
 
 function Color(hex){
@@ -519,7 +637,7 @@ function Color(hex){
     this.b = parseInt(values[4].toString() + values[5].toString(), 16);
 }
 
-function AmbientLight(color, intensity = 0.0) {
+function AmbientLight(color, intensity = 0.2) {
     this.type = 'ambient-light';
     this.color = {};
     console.log(color);
@@ -535,4 +653,90 @@ function PointLight(color, position) {
     this.color.g = (color.g - 0)/255;
     this.color.b = (color.b - 0)/255;
     this.position = position;
+}
+
+function multiply(a,b) {
+    let c1,c2,c3,c4;
+    c1 = a[0]*b[0] + a[4]*b[1] + a[8]*b[2] + a[12]*b[3]
+    c2 = a[1]*b[0] + a[5]*b[1] + a[9]*b[2] + a[13]*b[3]
+    c3 = a[2]*b[0] + a[6]*b[1] + a[10]*b[2] + a[14]*b[3]
+    c4 = a[3]*b[0] + a[7]*b[1] + a[11]*b[2] + a[15]*b[3]
+    return [c1,c2,c3,c4]
+}
+
+
+
+var rotater = 1;
+var dir = [1, 1, 1];
+
+class CollisionDetector{
+    constructor(box, r){
+        this.box = box;
+        this.r = r;
+
+        this.THRESHOLD = 0.05;
+    }
+
+    buildCollider(){
+        let point = this.box.position;
+        this.BACK = this.planeFromPoint(point[2], point[3], point[6]);
+        this.FRONT = this.planeFromPoint(point[1], point[4], point[5]);
+        this.RIGHT = this.planeFromPoint(point[1], point[3], point[5]);
+        this.LEFT = this.planeFromPoint(point[0], point[2],point[4]);
+        this.BOTTOM = this.planeFromPoint(point[1], point[2], point[3]);
+        this.TOP = this.planeFromPoint(point[4], point[5], point[6]);
+    }
+
+    planeFromPoint(A, B, C) {
+        let n = [], temp = [], temp2 = []
+        temp = vec3.subtract(temp,B,A)
+        temp2= vec3.subtract(temp2,C,B)
+        n = vec3.cross(n,temp,temp2)
+
+        let D = 0;
+        D = vec3.dot(n.map(x =>-x), A)
+        // Equation = n_x X + n_y Y + n_z Z - D = 0
+        return n.concat(D)
+    }
+
+    distancePointToPlane(planeEq, point) {
+        let new_point = point;
+        let num = Math.abs(
+            planeEq[0]*new_point[0] + 
+            planeEq[1]*new_point[1] + 
+            planeEq[2]*new_point[2] + planeEq[3])
+        let denum = Math.sqrt(planeEq.slice(0,3).map(x => x*x).reduce((a,b) => a+b, 0))
+        return num/denum
+    }
+
+    detect(){
+        let pos = this.r.position;
+        for(let i = 0; i < pos.length; i++){
+            if(this.distancePointToPlane(this.TOP, pos[i]) < this.THRESHOLD && dir[1] > 0) {dir[1] *= -1; rotater *= -1; console.log("TOP"); return;}
+            if(this.distancePointToPlane(this.TOP, pos[i]) < this.THRESHOLD && dir[1] < 0) {return;}
+        }
+        for(let i = 0; i < pos.length; i++){
+            if(this.distancePointToPlane(this.BOTTOM, pos[i]) < this.THRESHOLD && dir[1] < 0) {dir[1] *= -1; rotater *= -1; console.log("BOTTOM"); return;}
+            if(this.distancePointToPlane(this.BOTTOM, pos[i]) < this.THRESHOLD && dir[1] > 0) {return;}
+        }
+        for(let i = 0; i < pos.length; i++){
+            if(this.distancePointToPlane(this.FRONT, pos[i]) < this.THRESHOLD && dir[2] > 0) {dir[2] *= -1; rotater *= -1; console.log("FRONT");
+                console.log('a',this.box.position);
+                console.log('b',this.r.position)
+            return;}
+            if(this.distancePointToPlane(this.FRONT, pos[i]) < this.THRESHOLD && dir[2] < 0) {return;}
+        }
+        for(let i = 0; i < pos.length; i++){
+            if(this.distancePointToPlane(this.BACK, pos[i]) < this.THRESHOLD && dir[2] < 0) {dir[2] *= -1; rotater *= -1; console.log("BACK"); return;}
+            if(this.distancePointToPlane(this.BACK, pos[i]) < this.THRESHOLD && dir[2] > 0) {return;}
+        }
+        for(let i = 0; i < pos.length; i++){
+            if(this.distancePointToPlane(this.RIGHT, pos[i]) < this.THRESHOLD && dir[0] > 0) {dir[0] *= -1; rotater *= -1; console.log("RIGHT"); return;}
+            if(this.distancePointToPlane(this.RIGHT, pos[i]) < this.THRESHOLD && dir[0] < 0) {return;}
+        }
+        for(let i = 0; i < pos.length; i++){
+            if(this.distancePointToPlane(this.LEFT, pos[i]) < this.THRESHOLD && dir[0] < 0) {dir[0] *= -1; rotater *= -1; console.log("LEFT"); return;}
+            if(this.distancePointToPlane(this.LEFT, pos[i]) < this.THRESHOLD && dir[0] < 0) {return;}
+        }
+    }
 }
