@@ -103,10 +103,14 @@ function WebGL(id){
     }
     initShaders = initShaders.bind(this);
     initShaders();
+    this.mvMatrixOne = mat4.create();
+    this.pMatrixOne = mat4.create();
+    this.mvMatrixStackOne = [];
 
-    this.mvMatrix = mat4.create();
-    this.pMatrix = mat4.create();
-    this.mvMatrixStack = [];
+    this.mvMatrixTwo = mat4.create();
+    this.pMatrixTwo = mat4.create();
+    this.mvMatrixStackTwo = [];
+    
 
     this.object3dBuffer = [];
 
@@ -114,22 +118,67 @@ function WebGL(id){
     GL.enable(GL.DEPTH_TEST);
 }
 
-WebGL.prototype.mvPushMatrix = function() {
+WebGL.prototype.mvPushMatrix = function(idx) {
     let duplicate = mat4.create();
-    mat4.copy(duplicate, this.mvMatrix);
-    this.mvMatrixStack.push(duplicate);
+
+    let mvMat, mvMatStack;
+    if(idx == 1){
+        mvMat = this.mvMatrixOne;
+        mvMatStack = this.mvMatrixStackOne;
+    } else if(idx == 2){
+        mvMat = this.mvMatrixTwo;
+        mvMatStack = this.mvMatrixStackTwo;
+    } else if(idx == 3) {
+        mvMat = this.mvMatrixThree;
+        mvMatStack = this.mvMatrixStackThree;
+    } else {
+        mvMat = this.mvMatrixFour;
+        mvMatStack = this.mvMatrixStackFour;
+    }
+
+    mat4.copy(duplicate, mvMat);
+    mvMatStack.push(duplicate);
 }
 
-WebGL.prototype.mvPopMatrix = function() {
-    this.mvMatrix = this.mvMatrixStack.pop();   
+WebGL.prototype.mvPopMatrix = function(idx) {
+    let mvMatStack;
+    if(idx == 1){
+        mvMatStack = this.mvMatrixStackOne;
+        this.mvMatrixOne  = mvMatStack.pop();
+    } else if(idx == 2){
+        mvMatStack = this.mvMatrixStackTwo;
+        this.mvMatrixTwo  = mvMatStack.pop();
+    } else if(idx == 3) {
+        mvMatStack = this.mvMatrixStackThree;
+        this.mvMatrixThree  = mvMatStack.pop();
+    } else {
+        mvMatStack = this.mvMatrixStackFour;
+        this.mvMatrixFour  = mvMatStack.pop();
+    }
 }
 
-WebGL.prototype.setMatrixUniform = function() {
+WebGL.prototype.setMatrixUniform = function(idx) {
     let normalMatrix = mat3.create();
-    mat3.normalFromMat4(normalMatrix, this.mvMatrix);
 
-    GL.uniformMatrix4fv(this.shaderProgram.pMatrixUniform, false, this.pMatrix);
-    GL.uniformMatrix4fv(this.shaderProgram.mvMatrixUniform, false, this.mvMatrix);
+    let mvMat, pMat;
+    if(idx == 1){
+        mvMat = this.mvMatrixOne;
+        pMat = this.pMatrixOne;
+    } else if(idx == 2){
+        mvMat = this.mvMatrixTwo;
+        pMat = this.pMatrixTwo;
+    } else if(idx == 3) {
+        mvMat = this.mvMatrixThree;
+        pMat = this.pMatrixThree;
+    } else {
+        mvMat = this.mvMatrixFour;
+        pMat = this.pMatrixFour;
+    }
+
+    mat3.normalFromMat4(normalMatrix, mvMat);
+
+    GL.uniformMatrix4fv(this.shaderProgram.pMatrixUniform, false, pMat);
+    GL.uniformMatrix4fv(this.shaderProgram.mvMatrixUniform, false, mvMat);
     GL.uniformMatrix3fv(this.shaderProgram.nMatrixUniform, false, normalMatrix);
 }
 
@@ -208,20 +257,21 @@ WebGL.prototype.add = function(object3d) {
 var eventAfterRender = new CustomEvent('after-render');
 var eventLightFollow = new CustomEvent('light-follow');
 
-WebGL.prototype.render = function() {
-    GL.viewport(0, 0, GL.VIEWPORT_WIDTH, GL.VIEWPORT_HEIGHT);
+WebGL.prototype.renderOne = function(sw, sh, ew, eh) {
+    GL.scissor(sw, sh, ew, eh)
+    GL.viewport(sw, sh, ew, eh);
     GL.clear(GL.COLOR_BUFFER_BIT, GL.DEPTH_BUFFER_BIT);
 
-    mat4.perspective(this.pMatrix, glMatrix.toRadian(45), GL.VIEWPORT_WIDTH/GL.VIEWPORT_HEIGHT, 0.1, 100.0)
+    mat4.perspective(this.pMatrixOne, glMatrix.toRadian(45), GL.VIEWPORT_WIDTH/GL.VIEWPORT_HEIGHT, 0.1, 100.0)
 
-    mat4.identity(this.mvMatrix);
+    mat4.identity(this.mvMatrixOne);
 
-    mat4.translate(this.mvMatrix, this.mvMatrix, [0.0, 0.0,-50.0])
+    mat4.translate(this.mvMatrixOne, this.mvMatrixOne, [0.0, 0.0,-50.0])
 
     //console.log(this.object3dBuffer);
 
     for(let i = 0; i < this.object3dBuffer.length; i++) {
-        this.mvPushMatrix();
+        this.mvPushMatrix(1);
 
         let o = this.object3dBuffer[i];
 
@@ -229,7 +279,7 @@ WebGL.prototype.render = function() {
             var ev = new CustomEvent(o.id);
 
             document.dispatchEvent(ev);
-            mat4.multiply(this.mvMatrix, this.mvMatrix, o.obj3d.matrixWorld);
+            mat4.multiply(this.mvMatrixOne, this.mvMatrixOne, o.obj3d.matrixWorld);
 
             GL.bindBuffer(GL.ARRAY_BUFFER, o.position);
             GL.vertexAttribPointer(this.shaderProgram.vertexPositionAttribute, o.position.itemSize, GL.FLOAT, false, 0, 0);
@@ -253,11 +303,11 @@ WebGL.prototype.render = function() {
 
             let temp = [];
             for(let i = 0; i < o.obj3d.vertices_.length; i++){
-                temp.push(multiply(this.mvMatrix, o.obj3d.vertices_[i]));
+                temp.push(multiply(this.mvMatrixOne, o.obj3d.vertices_[i]));
             }
             o.obj3d.position = JSON.parse(JSON.stringify(temp));
 
-            this.setMatrixUniform();
+            this.setMatrixUniform(1);
 
             GL.drawElements(GL.TRIANGLES, o.indices.numItems, GL.UNSIGNED_SHORT, 0);
         } else if (o.obj3d.type === 'ambient-light') {
@@ -268,11 +318,102 @@ WebGL.prototype.render = function() {
             GL.uniform3f(this.shaderProgram.pointLightingColorUniform, o.obj3d.color.r, o.obj3d.color.g, o.obj3d.color.b);
         }
 
-        this.mvPopMatrix();
+        this.mvPopMatrix(1);
 
     }
 
     document.dispatchEvent(eventAfterRender);
+}
+
+WebGL.prototype.renderTwo = function(sw, sh, ew, eh) {
+    GL.scissor(sw, sh, ew, eh)
+    GL.viewport(sw, sh, ew, eh);
+    GL.clear(GL.COLOR_BUFFER_BIT, GL.DEPTH_BUFFER_BIT);
+
+    mat4.perspective(this.pMatrixTwo, glMatrix.toRadian(45), GL.VIEWPORT_WIDTH/GL.VIEWPORT_HEIGHT, 0.1, 100.0)
+
+    mat4.identity(this.mvMatrixTwo);
+
+    mat4.translate(this.mvMatrixTwo, this.mvMatrixTwo, [0.0, 0.0,-50.0])
+
+    document.addEventListener('right-click', function(){
+        THETA = 0;
+        PHI = 0;
+    });
+
+    mat4.rotateY(this.mvMatrixTwo, this.mvMatrixTwo, THETA);
+    mat4.rotateX(this.mvMatrixTwo, this.mvMatrixTwo, PHI);
+
+    //console.log(this.object3dBuffer);
+
+    for(let i = 0; i < this.object3dBuffer.length; i++) {
+        this.mvPushMatrix(2);
+
+        let o = this.object3dBuffer[i];
+
+        if(o.obj3d.type === 'geometry') {
+            //var ev = new CustomEvent(o.id);
+
+            //document.dispatchEvent(ev);
+            mat4.multiply(this.mvMatrixTwo, this.mvMatrixTwo, o.obj3d.matrixWorld);
+
+            GL.bindBuffer(GL.ARRAY_BUFFER, o.position);
+            GL.vertexAttribPointer(this.shaderProgram.vertexPositionAttribute, o.position.itemSize, GL.FLOAT, false, 0, 0);
+
+            GL.bindBuffer(GL.ARRAY_BUFFER, o.color);
+            GL.vertexAttribPointer(this.shaderProgram.vertexColorAttribute, o.color.itemSize, GL.FLOAT, false, 0, 0);
+
+            GL.bindBuffer(GL.ARRAY_BUFFER, o.normal);
+            GL.vertexAttribPointer(this.shaderProgram.vertexNormalAttribute, o.normal.itemSize, GL.FLOAT, false, 0, 0);
+
+            GL.bindBuffer(GL.ARRAY_BUFFER, o.textureCoord);
+            GL.vertexAttribPointer(this.shaderProgram.textureCoordAttribute, o.textureCoord.itemSize, GL.FLOAT, false, 0, 0);
+
+            if(o.textureSrc !== undefined){
+                GL.activeTexture(GL.TEXTURE0);
+                GL.bindTexture(GL.TEXTURE_2D, o.texture);
+                GL.uniform1i(this.shaderProgram.samplerUniform, 0);
+            }
+
+            GL.bindBuffer(GL.ELEMENT_ARRAY_BUFFER, o.indices);
+
+            let temp = [];
+            for(let i = 0; i < o.obj3d.vertices_.length; i++){
+                temp.push(multiply(this.mvMatrixTwo, o.obj3d.vertices_[i]));
+            }
+            o.obj3d.position = JSON.parse(JSON.stringify(temp));
+
+            this.setMatrixUniform(2);
+
+            GL.drawElements(GL.TRIANGLES, o.indices.numItems, GL.UNSIGNED_SHORT, 0);
+        } 
+        else if (o.obj3d.type === 'ambient-light') {
+            GL.uniform3f(this.shaderProgram.ambientColorUniform, o.obj3d.color.r, o.obj3d.color.g, o.obj3d.color.b);
+        } else if (o.obj3d.type === 'point-light') {
+            document.dispatchEvent(eventLightFollow);
+            GL.uniform3f(this.shaderProgram.pointLightingLocationUniform, o.obj3d.position.x, o.obj3d.position.y, o.obj3d.position.z)
+            GL.uniform3f(this.shaderProgram.pointLightingColorUniform, o.obj3d.color.r, o.obj3d.color.g, o.obj3d.color.b);
+        }
+
+        this.mvPopMatrix(2);
+
+    }
+
+    document.dispatchEvent(eventAfterRender);
+}
+
+WebGL.prototype.render = function() {
+    GL.enable(GL.SCISSOR_TEST);
+
+    let width = GL.VIEWPORT_WIDTH;
+    let height = GL.VIEWPORT_HEIGHT;
+
+    for(let a = 0; a < 2; a++){
+        for(let b = 0; b < 2; b++){
+            if( a == 0 && b == 0) this.renderOne(0 * width / 2, 1 * height / 2, width / 2, height / 2);
+            if( a == 0 && b == 1) this.renderTwo(1 * width / 2, 1 * height / 2, width / 2, height / 2)
+        }
+    }
 }
 
 function Geometry(){
