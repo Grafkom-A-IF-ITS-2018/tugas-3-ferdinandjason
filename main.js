@@ -49,6 +49,9 @@ function getShader(id) {
 function WebGL(id){
     id = id || WEBGL_ID_DEFAULT;
     var canvasGL = document.getElementById(id);
+    canvasGL.width = window.innerWidth; //document.width is obsolete
+    canvasGL.height = window.innerHeight; //document.height is obsolete
+    console.log(canvasGL.width, canvasGL.height);
     GL = canvasGL.getContext(EXPERIMENTAL_WEBGL);
     GL.VIEWPORT_WIDTH = canvasGL.width;
     GL.VIEWPORT_HEIGHT = canvasGL.height;
@@ -61,10 +64,8 @@ function WebGL(id){
         console.log(vertexShader);
 
         this.shaderProgram = GL.createProgram();
-        console.log('asd',this.shaderProgram);
         GL.attachShader(this.shaderProgram, vertexShader);
         GL.attachShader(this.shaderProgram, fragmentShader);
-        console.log(this.shaderProgram);
         GL.linkProgram(this.shaderProgram);
 
 
@@ -75,15 +76,12 @@ function WebGL(id){
         GL.useProgram(this.shaderProgram);
 
         this.shaderProgram.vertexColorAttribute = GL.getAttribLocation(this.shaderProgram, "aVertexColor");
-        console.log(this.shaderProgram.vertexColorAttribute);
         GL.enableVertexAttribArray(this.shaderProgram.vertexColorAttribute);
         
         this.shaderProgram.vertexPositionAttribute = GL.getAttribLocation(this.shaderProgram, "aVertexPosition");
-        console.log(this.shaderProgram.vertexPositionAttribute);
         GL.enableVertexAttribArray(this.shaderProgram.vertexPositionAttribute);
 
         this.shaderProgram.vertexNormalAttribute = GL.getAttribLocation(this.shaderProgram, "aVertexNormals");
-        console.log(this.shaderProgram.vertexNormalAttribute);
         GL.enableVertexAttribArray(this.shaderProgram.vertexNormalAttribute);
 
         this.shaderProgram.textureCoordAttribute = GL.getAttribLocation(this.shaderProgram, "aTextureCoord");
@@ -110,6 +108,10 @@ function WebGL(id){
     this.mvMatrixTwo = mat4.create();
     this.pMatrixTwo = mat4.create();
     this.mvMatrixStackTwo = [];
+
+    this.mvMatrixThree = mat4.create();
+    this.pMatrixThree = mat4.create();
+    this.mvMatrixStackThree = [];
 
     this.mvMatrixFour = mat4.create();
     this.pMatrixFour = mat4.create();
@@ -347,6 +349,7 @@ WebGL.prototype.renderTwo = function(sw, sh, ew, eh) {
 
     mat4.rotateY(this.mvMatrixTwo, this.mvMatrixTwo, THETA);
     mat4.rotateX(this.mvMatrixTwo, this.mvMatrixTwo, PHI);
+    //console.log(THETA);
 
     //console.log(this.object3dBuffer);
 
@@ -394,7 +397,6 @@ WebGL.prototype.renderTwo = function(sw, sh, ew, eh) {
         else if (o.obj3d.type === 'ambient-light') {
             GL.uniform3f(this.shaderProgram.ambientColorUniform, o.obj3d.color.r, o.obj3d.color.g, o.obj3d.color.b);
         } else if (o.obj3d.type === 'point-light') {
-            document.dispatchEvent(eventLightFollow);
             GL.uniform3f(this.shaderProgram.pointLightingLocationUniform, o.obj3d.position.x, o.obj3d.position.y, o.obj3d.position.z)
             GL.uniform3f(this.shaderProgram.pointLightingColorUniform, o.obj3d.color.r, o.obj3d.color.g, o.obj3d.color.b);
         }
@@ -404,6 +406,112 @@ WebGL.prototype.renderTwo = function(sw, sh, ew, eh) {
     }
 
     document.dispatchEvent(eventAfterRender);
+}
+
+var centerOfR = undefined;
+var centerR = undefined;
+
+WebGL.prototype.renderThree = function(sw, sh, ew, eh) {
+    GL.scissor(sw, sh, ew, eh)
+    GL.viewport(sw, sh, ew, eh);
+    GL.clear(GL.COLOR_BUFFER_BIT, GL.DEPTH_BUFFER_BIT);
+
+    mat4.perspective(this.pMatrixThree, glMatrix.toRadian(45), GL.VIEWPORT_WIDTH/GL.VIEWPORT_HEIGHT, 0.1, 1000.0)
+
+    mat4.identity(this.mvMatrixThree);
+
+    mat4.translate(this.mvMatrixThree, this.mvMatrixThree, [0.0, 0.0, -50.0])
+
+    let cameraMatrix = mat4.create(), viewMatrix = mat4.create();
+
+    if(centerOfR !== undefined) {
+        console.log('ke ',centerOfR);
+        console.log('dr ',centerR);
+        let center = centerOfR;
+        //console.log(centerOfR);
+        //console.log(center);
+        mat4.translate(cameraMatrix, cameraMatrix, centerR);
+
+        let cameraPosition = [
+            cameraMatrix[12],
+            cameraMatrix[13],
+            cameraMatrix[14],
+        ];
+        // centerOfR[0] = -centerOfR[0];
+        // centerOfR[1] = -centerOfR[1];
+        // centerOfR[2] = -centerOfR[2];
+        // //console.log(dir);
+        console.log(this.object3dBuffer[1].obj3d.position);
+        console.log(cameraPosition);
+        console.log(centerR);
+        console.log(centerOfR)
+
+        mat4.lookAt(this.pMatrixThree, cameraPosition , centerOfR , [0, 1, 0]);
+        
+        mat4.invert(viewMatrix,cameraMatrix);
+        mat4.multiply(this.pMatrixThree, this.pMatrixThree,  viewMatrix);
+    }
+
+    //console.log(this.object3dBuffer);
+
+    for(let i = 0; i < this.object3dBuffer.length; i++) {
+        this.mvPushMatrix(3);
+
+        let o = this.object3dBuffer[i];
+
+        if(o.obj3d.type === 'geometry') {
+            //var ev = new CustomEvent(o.id);
+
+            //document.dispatchEvent(ev);
+            mat4.multiply(this.mvMatrixThree, this.mvMatrixThree, o.obj3d.matrixWorld);
+
+
+            GL.bindBuffer(GL.ARRAY_BUFFER, o.position);
+            GL.vertexAttribPointer(this.shaderProgram.vertexPositionAttribute, o.position.itemSize, GL.FLOAT, false, 0, 0);
+
+            GL.bindBuffer(GL.ARRAY_BUFFER, o.color);
+            GL.vertexAttribPointer(this.shaderProgram.vertexColorAttribute, o.color.itemSize, GL.FLOAT, false, 0, 0);
+
+            GL.bindBuffer(GL.ARRAY_BUFFER, o.normal);
+            GL.vertexAttribPointer(this.shaderProgram.vertexNormalAttribute, o.normal.itemSize, GL.FLOAT, false, 0, 0);
+
+            GL.bindBuffer(GL.ARRAY_BUFFER, o.textureCoord);
+            GL.vertexAttribPointer(this.shaderProgram.textureCoordAttribute, o.textureCoord.itemSize, GL.FLOAT, false, 0, 0);
+
+            if(o.textureSrc !== undefined){
+                GL.activeTexture(GL.TEXTURE0);
+                GL.bindTexture(GL.TEXTURE_2D, o.texture);
+                GL.uniform1i(this.shaderProgram.samplerUniform, 0);
+            }
+
+            GL.bindBuffer(GL.ELEMENT_ARRAY_BUFFER, o.indices);
+
+            let temp = [];
+            for(let i = 0; i < o.obj3d.vertices_.length; i++){
+                temp.push(multiply(this.mvMatrixThree, o.obj3d.vertices_[i]));
+            }
+            o.obj3d.position = JSON.parse(JSON.stringify(temp));
+            
+            if(i == 1){
+                //console.log(o.obj3d.position);
+                centerOfR = o.obj3d.findCenterInFrontOf(1);
+                centerR = o.obj3d.findCenter();
+            }
+
+            this.setMatrixUniform(3);
+
+            GL.drawElements(GL.TRIANGLES, o.indices.numItems, GL.UNSIGNED_SHORT, 0);
+        } 
+        else if (o.obj3d.type === 'ambient-light') {
+            GL.uniform3f(this.shaderProgram.ambientColorUniform, o.obj3d.color.r, o.obj3d.color.g, o.obj3d.color.b);
+        } else if (o.obj3d.type === 'point-light') {
+            GL.uniform3f(this.shaderProgram.pointLightingLocationUniform, o.obj3d.position.x, o.obj3d.position.y, o.obj3d.position.z)
+            GL.uniform3f(this.shaderProgram.pointLightingColorUniform, o.obj3d.color.r, o.obj3d.color.g, o.obj3d.color.b);
+        }
+
+        this.mvPopMatrix(3);
+
+    }
 }
 
 var cameraAngle = 0;
@@ -417,26 +525,14 @@ WebGL.prototype.renderFour = function(sw, sh, ew, eh) {
 
     mat4.identity(this.mvMatrixFour);
 
-    mat4.translate(this.mvMatrixFour, this.mvMatrixFour, [0.0, 0.0, 0.0])
+    //mat4.translate(this.mvMatrixFour, this.mvMatrixFour, [0.0, 0.0, 0.0])
 
     let cameraMatrix = mat4.create(), viewMatrix = mat4.create();
     mat4.rotateY(cameraMatrix, cameraMatrix, cameraAngle);
     mat4.translate(cameraMatrix, cameraMatrix, [0, 0, 50]);
-
-    // let cameraPosition = [
-    //     cameraMatrix[12],
-    //     cameraMatrix[13],
-    //     cameraMatrix[14],
-    // ];
-
-    // let center = this.object3dBuffer[0].obj3d.findCenter();
-
-    // mat4.lookAt(cameraMatrix, cameraPosition, center, [0, 1, 0]);
     
     mat4.invert(viewMatrix,cameraMatrix);
     mat4.multiply(this.pMatrixFour, this.pMatrixFour,  viewMatrix);
-
-    //console.log(this.object3dBuffer);
 
     for(let i = 0; i < this.object3dBuffer.length; i++) {
         this.mvPushMatrix(4);
@@ -482,7 +578,6 @@ WebGL.prototype.renderFour = function(sw, sh, ew, eh) {
         else if (o.obj3d.type === 'ambient-light') {
             GL.uniform3f(this.shaderProgram.ambientColorUniform, o.obj3d.color.r, o.obj3d.color.g, o.obj3d.color.b);
         } else if (o.obj3d.type === 'point-light') {
-            document.dispatchEvent(eventLightFollow);
             GL.uniform3f(this.shaderProgram.pointLightingLocationUniform, o.obj3d.position.x, o.obj3d.position.y, o.obj3d.position.z)
             GL.uniform3f(this.shaderProgram.pointLightingColorUniform, o.obj3d.color.r, o.obj3d.color.g, o.obj3d.color.b);
         }
@@ -498,12 +593,14 @@ WebGL.prototype.render = function() {
 
     let width = GL.VIEWPORT_WIDTH;
     let height = GL.VIEWPORT_HEIGHT;
-
+    // centerOfR = undefined;
+    // centerR = undefined;
     for(let a = 0; a < 2; a++){
         for(let b = 0; b < 2; b++){
             if( a == 0 && b == 0) this.renderOne(0 * width / 2, 1 * height / 2, width / 2, height / 2);
-            if( a == 0 && b == 1) this.renderTwo(1 * width / 2, 1 * height / 2, width / 2, height / 2)
-            if( a == 1 && b == 1) this.renderFour(1 * width / 2, 0 * height / 2, width / 2, height / 2)
+            if( a == 0 && b == 1) this.renderTwo(1 * width / 2, 1 * height / 2, width / 2, height / 2);
+            if( a == 1 && b == 1) this.renderFour(1 * width / 2, 0 * height / 2, width / 2, height / 2);
+            if( a == 1 && b == 0) this.renderThree(0 * width / 2, 0 * height / 2, width / 2, height / 2);
         }
     }
 }
@@ -601,7 +698,7 @@ Geometry.prototype.constructor = Geometry;
 const BOX_GEOMETRY_FACE = 6;
 const BOX_GEOMETRY_POINT = 4;
 
-function BoxGeometry(depth, width, height, step = 1){
+function BoxGeometry(depth, width, height, step = 1, colored = false){
     Geometry.call(this);
 
     this.type = 'geometry';
@@ -641,7 +738,8 @@ function BoxGeometry(depth, width, height, step = 1){
                 this.normals.push(0, 0, 1.0);
             }
             this.vertices.push(x, y, z);
-            this.colors.push(0.0, 0.0, 0.0, 1.0);
+            if(colored) this.colors.push(1.0, 1.0, 1.0, 1.0);
+            else this.colors.push(0.0, 0.0, 0.0, 1.0);
         }
         var p = counter * BOX_GEOMETRY_POINT;
         var q = counter * BOX_GEOMETRY_POINT + 1;
@@ -862,14 +960,66 @@ RGeometry.prototype.render = function() {
 
 RGeometry.prototype.findCenter = function() {
     let center = [0, 0, 0];
-    for(let i = 0; i < this.position.length; i++){
+    for(let i = 0; i < this.position.length / 2; i++){
         center[0] += this.position[i][0];
         center[1] += this.position[i][1];
         center[2] += this.position[i][2];
     }
-    center[0] /= this.position.length;
-    center[1] /= this.position.length;
-    center[2] /= this.position.length;
+    center[0] /= this.position.length / 2;
+    center[1] /= this.position.length / 2;
+    center[2] /= this.position.length / 2;
+
+
+    console.log(this.position);
+    console.log(center);
+
+    return center;
+}
+
+RGeometry.prototype.findCenterInFrontOf = function (d) {
+    let center = [0, 0, 0], slope, INF;
+    if((this.position[1][0] !== this.position[0][0])){
+        slope = (this.position[1][2] - this.position[0][2])/(this.position[1][0] - this.position[0][0]);
+    } else {
+        slope = 999999999;
+        INF = true;
+    }
+    slope = -1.0/slope;
+    for(let i = 0; i < this.position.length / 2; i++){
+        center[0] += this.position[i][0];
+        center[1] += this.position[i][1];
+        center[2] += this.position[i][2];
+    }
+    center[0] /= this.position.length / 2;
+    center[1] /= this.position.length / 2;
+    center[2] /= this.position.length / 2;
+
+    let equation = [0, 0, 0]
+    equation[0] = 1 + slope * slope;                                // A
+    equation[1] = -(2 * center[0] + 2 * slope * slope * center[0]);     // B
+    equation[2] = ((1 + slope * slope) * center[0]*center[0]) - d*d // C
+
+    let new_x = (-equation[1] + Math.sqrt((equation[1]*equation[1]) - 4*equation[0]*equation[2]))/2*equation[0];
+    // let new_x_mi = (-equation[1] - Math.sqrt((equation[1]*equation[1]) - 4*equation[0]*equation[2]))/2*equation[0];
+    // let new_x;
+    // if(Math.abs(new_x_ma - center[0]) > Math.abs(new_x_mi - center[0])){
+    //     new_x = new_x_mi;
+    // } else {
+    //     new_x = new_x_ma;
+    // }
+    //let new_x = Math.min(new_x_ma, new_x_mi);
+    // if(INF){
+    //     new_x = center[0] + d;
+    // }
+
+    let new_z = slope*(new_x - center[0]) + center[2];
+    // if(INF){
+    //     new_z = center[2] + d;
+    // }
+
+    center[0] = new_x;
+    center[1] = center[1];
+    center[2] = new_z;
     return center;
 }
 
@@ -966,10 +1116,7 @@ class CollisionDetector{
             if(this.distancePointToPlane(this.BOTTOM, pos[i]) < this.THRESHOLD && dir[1] > 0) {return;}
         }
         for(let i = 0; i < pos.length; i++){
-            if(this.distancePointToPlane(this.FRONT, pos[i]) < this.THRESHOLD && dir[2] > 0) {dir[2] *= -1; rotater *= -1; console.log("FRONT");
-                console.log('a',this.box.position);
-                console.log('b',this.r.position)
-            return;}
+            if(this.distancePointToPlane(this.FRONT, pos[i]) < this.THRESHOLD && dir[2] > 0) {dir[2] *= -1; rotater *= -1; console.log("FRONT"); return;} 
             if(this.distancePointToPlane(this.FRONT, pos[i]) < this.THRESHOLD && dir[2] < 0) {return;}
         }
         for(let i = 0; i < pos.length; i++){
