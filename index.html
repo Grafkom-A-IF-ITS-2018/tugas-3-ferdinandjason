@@ -87,7 +87,7 @@
         r.action = () => {
             r.matrixWorld = Object.assign({},r.temporaryMatrixWorld);
             r.move.vector([window.dir[0]*0.1, window.dir[1]*0.1, window.dir[2]*0.1]);
-            r.rotation.y += window.rotater*1;
+            r.rotation.y += window.rotater*0.5;
             r.translate.mat = [-1.5, -3.0, -0.5];
         };
         r.render();

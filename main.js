@@ -195,7 +195,8 @@ async function handleLoadedTexture(texture) {
     await GL.texImage2D(GL.TEXTURE_2D, 0, GL.RGBA, GL.RGBA, GL.UNSIGNED_BYTE, texture.image);
     await GL.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, GL.LINEAR);
     await GL.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, GL.LINEAR);
-    
+    0.5
+0.5
     texture.loaded = true;
 }
 
@@ -411,59 +412,49 @@ WebGL.prototype.renderTwo = function(sw, sh, ew, eh) {
 var centerOfR = undefined;
 var centerR = undefined;
 
+var revTranslate = [0.0, 0.0, 0.0];
+var revRotate = 0;
+
 WebGL.prototype.renderThree = function(sw, sh, ew, eh) {
     GL.scissor(sw, sh, ew, eh)
     GL.viewport(sw, sh, ew, eh);
     GL.clear(GL.COLOR_BUFFER_BIT, GL.DEPTH_BUFFER_BIT);
 
     mat4.perspective(this.pMatrixThree, glMatrix.toRadian(45), GL.VIEWPORT_WIDTH/GL.VIEWPORT_HEIGHT, 0.1, 1000.0)
+    //mat4.rotate(this.pMatrixThree, this.pMatrixThree, glMatrix.toRadian(-180), [0, 1, 0]);
+    //mat4.rotate(this.pMatrixThree, this.pMatrixThree, glMatrix.toRadian(-180), [1, 0, 0]);
 
     mat4.identity(this.mvMatrixThree);
 
-    mat4.translate(this.mvMatrixThree, this.mvMatrixThree, [0.0, 0.0, -50.0])
+    // mat4.translate(this.mvMatrixThree, this.mvMatrixThree, [0.0, 0.0, 0.0])
 
-    let cameraMatrix = mat4.create(), viewMatrix = mat4.create();
-
-    if(centerOfR !== undefined) {
-        console.log('ke ',centerOfR);
-        console.log('dr ',centerR);
-        let center = centerOfR;
-        //console.log(centerOfR);
-        //console.log(center);
-        mat4.translate(cameraMatrix, cameraMatrix, centerR);
-
-        let cameraPosition = [
-            cameraMatrix[12],
-            cameraMatrix[13],
-            cameraMatrix[14],
-        ];
-        // centerOfR[0] = -centerOfR[0];
-        // centerOfR[1] = -centerOfR[1];
-        // centerOfR[2] = -centerOfR[2];
-        // //console.log(dir);
-        console.log(this.object3dBuffer[1].obj3d.position);
-        console.log(cameraPosition);
-        console.log(centerR);
-        console.log(centerOfR)
-
-        mat4.lookAt(this.pMatrixThree, cameraPosition , centerOfR , [0, 1, 0]);
-        
-        mat4.invert(viewMatrix,cameraMatrix);
-        mat4.multiply(this.pMatrixThree, this.pMatrixThree,  viewMatrix);
-    }
-
-    //console.log(this.object3dBuffer);
+    let tempMatR = this.object3dBuffer[1].obj3d.matrixWorld;
 
     for(let i = 0; i < this.object3dBuffer.length; i++) {
         this.mvPushMatrix(3);
 
         let o = this.object3dBuffer[i];
-
+        if(i == 1) continue;
         if(o.obj3d.type === 'geometry') {
             //var ev = new CustomEvent(o.id);
-
+            console.log(o.obj3d);
             //document.dispatchEvent(ev);
-            mat4.multiply(this.mvMatrixThree, this.mvMatrixThree, o.obj3d.matrixWorld);
+            revTranslate[0] += (-window.dir[0])*0.1;
+            revTranslate[1] += (-window.dir[1])*0.1;
+            revTranslate[2] += (-window.dir[2])*0.1;
+            revRotate += (-window.rotater*0.5);
+            console.log(revTranslate);
+            //revRotate -= window.rotater*1;
+
+
+            let tempMat = Object.assign([], o.obj3d.matrixWorld);
+            console.log(tempMat)
+            //mat4.translate(tempMat, tempMat, [0, 0, -revTranslate[1]])
+            //mat4.translate(tempMat, tempMat, [0, revTranslate[2], 0])
+            mat4.rotate(tempMat, tempMat, glMatrix.toRadian(revRotate), [0, 0, 1]);
+            mat4.translate(tempMat, tempMat, [-revTranslate[0], revTranslate[2], -revTranslate[1]])
+
+            mat4.multiply(this.mvMatrixThree, this.mvMatrixThree, tempMat );
 
 
             GL.bindBuffer(GL.ARRAY_BUFFER, o.position);
@@ -676,6 +667,7 @@ function Geometry(){
             this.direction[0] += value[0];
             this.direction[1] += value[1];
             this.direction[2] += value[2];
+            console.log(this.direction);
             this.updateMatrixWorld();
         },
         updateMatrixWorld : function() {
@@ -946,7 +938,6 @@ function RGeometry(depth, width, height, color = new Color("0x156289")) {
     for(let i = 0; i < this.vertices.length / 3; i++){
         this.colors.push(color.r / 255, color.g / 255, color.b/ 255, 1.0);
     }
-    console.log(this.colors);
 
     this.textureSrc = undefined; //'Crate.jpg';
 }
@@ -968,11 +959,6 @@ RGeometry.prototype.findCenter = function() {
     center[0] /= this.position.length / 2;
     center[1] /= this.position.length / 2;
     center[2] /= this.position.length / 2;
-
-
-    console.log(this.position);
-    console.log(center);
-
     return center;
 }
 
